@@ -349,7 +349,7 @@
           rgba(255,255,255,0.12) 0 22px,
           transparent 22px 60px);
       background-size: 100% 100%, 82px 100%;
-      animation: groundScroll 1.1s linear infinite;
+      animation: groundScroll 2.4s linear infinite;
     }
     @keyframes groundScroll { to { background-position: 0 0, -82px 0; } }
 
@@ -367,14 +367,14 @@
     }
     @keyframes dustScroll { to { background-position: -240px 0; } }
 
-    /* the animal that runs across the scene */
+    /* the animal that trots across the scene (slow, relaxed pace) */
     .runner {
       position: absolute;
       bottom: 18px;
       left: -90px;
       width: 78px;
       height: auto;
-      animation: run 6.5s linear infinite;
+      animation: run 13s linear infinite;
       will-change: transform;
       filter: drop-shadow(0 6px 8px rgba(0,0,0,0.35));
     }
@@ -382,16 +382,21 @@
       0%   { transform: translateX(0)               translateY(0); }
       100% { transform: translateX(calc(720px + 180px)) translateY(0); }
     }
-    /* body bobbing while running */
-    .runner .body-bob { animation: bob 0.42s ease-in-out infinite; transform-origin: 50% 100%; }
-    @keyframes bob { 0%,100% { transform: translateY(0) rotate(-1.5deg);} 50% { transform: translateY(-4px) rotate(1.5deg);} }
-    /* legs alternate */
-    .runner .leg-a { animation: legA 0.42s linear infinite; transform-origin: top center; }
-    .runner .leg-b { animation: legB 0.42s linear infinite; transform-origin: top center; }
-    @keyframes legA { 0%,100%{ transform: rotate(28deg);} 50%{ transform: rotate(-28deg);} }
-    @keyframes legB { 0%,100%{ transform: rotate(-28deg);} 50%{ transform: rotate(28deg);} }
+    /* body bobbing while trotting */
+    .runner .body-bob { animation: bob 0.9s ease-in-out infinite; transform-origin: 50% 100%; }
+    @keyframes bob { 0%,100% { transform: translateY(0) rotate(-1.2deg);} 50% { transform: translateY(-3px) rotate(1.2deg);} }
+
+    /* All four legs swing in a diagonal trot gait.
+       Front-left + back-right move together (phase A);
+       Front-right + back-left move together (phase B). */
+    .runner .leg { transform-origin: top center; }
+    .runner .leg-a { animation: legA 0.9s ease-in-out infinite; }
+    .runner .leg-b { animation: legB 0.9s ease-in-out infinite; }
+    @keyframes legA { 0%,100%{ transform: rotate(22deg);} 50%{ transform: rotate(-22deg);} }
+    @keyframes legB { 0%,100%{ transform: rotate(-22deg);} 50%{ transform: rotate(22deg);} }
+
     /* wagging tail */
-    .runner .tail { animation: wag 0.5s ease-in-out infinite; transform-origin: 8px 20px; }
+    .runner .tail { animation: wag 1s ease-in-out infinite; transform-origin: 8px 20px; }
     @keyframes wag { 0%,100%{ transform: rotate(-12deg);} 50%{ transform: rotate(14deg);} }
 
     /* Reduced motion */
@@ -460,12 +465,14 @@
           </linearGradient>
         </defs>
 
-        <!-- back legs -->
-        <g class="leg-b">
-          <rect x="78" y="52" width="7" height="20" rx="3.5" fill="#e0533f"/>
-        </g>
-        <g class="leg-a">
+        <!-- BACK legs (behind the body) -->
+        <!-- back-left pairs diagonally with front-right (phase B) -->
+        <g class="leg leg-b">
           <rect x="30" y="52" width="7" height="20" rx="3.5" fill="#e0533f"/>
+        </g>
+        <!-- back-right pairs diagonally with front-left (phase A) -->
+        <g class="leg leg-a">
+          <rect x="78" y="52" width="7" height="20" rx="3.5" fill="#e0533f"/>
         </g>
 
         <g class="body-bob">
@@ -478,9 +485,15 @@
           <!-- body -->
           <ellipse cx="60" cy="44" rx="34" ry="18" fill="url(#furGrad)"/>
 
-          <!-- front legs -->
-          <rect x="44" y="52" width="7" height="20" rx="3.5" fill="#ff6a3c"/>
-          <rect x="70" y="52" width="7" height="20" rx="3.5" fill="#ff6a3c"/>
+          <!-- FRONT legs (in front of the body) -->
+          <!-- front-left pairs diagonally with back-right (phase A) -->
+          <g class="leg leg-a">
+            <rect x="44" y="52" width="7" height="20" rx="3.5" fill="#ff6a3c"/>
+          </g>
+          <!-- front-right pairs diagonally with back-left (phase B) -->
+          <g class="leg leg-b">
+            <rect x="70" y="52" width="7" height="20" rx="3.5" fill="#ff6a3c"/>
+          </g>
 
           <!-- head -->
           <g>
