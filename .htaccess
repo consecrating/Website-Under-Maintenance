@@ -1,0 +1,447 @@
+# ==========================================================================
+#  .htaccess — Static HTML site hardening
+#  Apache 2.4+ (most shared hosts: cPanel, Hostinger, GoDaddy, SiteGround)
+#
+#  BEFORE GOING LIVE: replace every "example.com" below with your real domain.
+# ==========================================================================
+
+
+# ==========================================================================
+#  1. DEFAULT DOCUMENT
+# ==========================================================================
+DirectoryIndex index.html index.htm
+
+
+# ==========================================================================
+#  2. HIDE SERVER INFO  (don't advertise what you run — hackers fingerprint it)
+# ==========================================================================
+ServerSignature Off
+
+<IfModule mod_headers.c>
+  # Strip headers that leak your stack
+  Header always unset X-Powered-By
+  Header always unset X-AspNet-Version
+  Header always unset X-AspNetMvc-Version
+  Header always unset Server
+</IfModule>
+
+
+# ==========================================================================
+#  3. DISABLE DIRECTORY BROWSING
+#     Stops anyone listing your files by visiting a folder URL.
+# ==========================================================================
+Options -Indexes
+
+# Block symlink-based traversal tricks but keep symlinks working
+Options +FollowSymLinks -MultiViews
+
+
+# ==========================================================================
+#  4. FORCE HTTPS + canonical www/non-www
+# ==========================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # --- Force HTTPS ---
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  # --- Force non-www (comment out this block if you prefer www) ---
+  RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+  RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
+
+  # --- Force www instead (uncomment, and comment the block above) ---
+  # RewriteCond %{HTTP_HOST} !^www\. [NC]
+  # RewriteCond %{HTTP_HOST} !^localhost [NC]
+  # RewriteRule ^ https://www.%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+
+# ==========================================================================
+#  5. SECURITY HEADERS
+# ==========================================================================
+<IfModule mod_headers.c>
+
+  # HSTS — force browsers to use HTTPS for 1 year.
+  # ONLY enable after HTTPS is confirmed working, it's hard to undo.
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+
+  # Stop clickjacking (your site being framed inside a scam site)
+  Header always set X-Frame-Options "SAMEORIGIN"
+
+  # Stop MIME-type sniffing (a .txt being executed as .js)
+  Header always set X-Content-Type-Options "nosniff"
+
+  # Don't leak your URLs to sites you link out to
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Deny browser features this static page never needs
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), accelerometer=()"
+
+  # Legacy XSS filter (harmless on modern browsers)
+  Header always set X-XSS-Protection "1; mode=block"
+
+  # Block Adobe cross-domain policy abuse
+  Header always set X-Permitted-Cross-Domain-Policies "none"
+
+  # --- Content Security Policy ---
+  # Tuned for THIS page: inline <style>/<script> + Google Fonts + <canvas>.
+  # If you add analytics or a CDN, whitelist its domain here or it will be blocked.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+
+  # Cross-origin isolation hardening
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  Header always set Cross-Origin-Resource-Policy "same-site"
+</IfModule>
+
+
+# ==========================================================================
+#  6. BLOCK ACCESS TO SENSITIVE FILES
+#     Critical: your site is deployed from a git repo, so .git MUST be hidden.
+# ==========================================================================
+
+# All dotfiles/dotfolders: .git, .env, .htaccess, .DS_Store, .idea ...
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule "(^|/)\." - [F,L]
+</IfModule>
+
+# Belt-and-braces: block by extension / filename
+<FilesMatch "(?i)^.*\.(bak|backup|old|orig|save|swp|swo|tmp|temp|log|sql|sqlite|db|ini|conf|config|env|yml|yaml|sh|bash|py|pl|cgi|lock|json|md|dist|inc)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# Protect .htaccess / .htpasswd themselves
+<FilesMatch "^\.(htaccess|htpasswd)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# Common junk files attackers probe for
+<FilesMatch "(?i)^(composer\.(json|lock)|package(-lock)?\.json|yarn\.lock|Gemfile|Dockerfile|docker-compose\.yml|wp-config\.php|readme\.html|license\.txt|error_log|\.gitignore)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+
+# ==========================================================================
+#  7. NO SERVER-SIDE EXECUTION
+#     This is a pure HTML site — nothing should ever execute. If an attacker
+#     manages to upload a shell, this stops it from running.
+# ==========================================================================
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+
+Options -ExecCGI
+AddType text/plain .php .php3 .php4 .php5 .php7 .phtml .pl .py .cgi .rb .asp .aspx .jsp .sh
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .pl .py .cgi .rb
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule \.(php|phtml|php[0-9]|pl|py|cgi|rb|asp|aspx|jsp|sh)$ - [F,L]
+</IfModule>
+
+
+# ==========================================================================
+#  8. LIMIT HTTP METHODS
+#     A static site only needs GET/HEAD/OPTIONS. Block the rest.
+# ==========================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_METHOD} !^(GET|HEAD|OPTIONS)$
+  RewriteRule ^ - [F,L]
+</IfModule>
+
+# Disable legacy WebDAV verbs
+<IfModule mod_headers.c>
+  <LimitExcept GET HEAD OPTIONS>
+    <IfModule mod_authz_core.c>
+      Require all denied
+    </IfModule>
+  </LimitExcept>
+</IfModule>
+
+
+# ==========================================================================
+#  9. BLOCK MALICIOUS REQUEST PATTERNS
+#     Signatures of SQLi / XSS / LFI / RFI scanners.
+# ==========================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Directory traversal & null bytes
+  RewriteCond %{QUERY_STRING} (\.\./|\.\.%2f|%00|%0A|%0D) [NC,OR]
+
+  # Remote/local file inclusion
+  RewriteCond %{QUERY_STRING} (https?|ftp|php|data|file|expect|input):// [NC,OR]
+
+  # SQL injection
+  RewriteCond %{QUERY_STRING} (union[\s+]+select|select[\s+]+from|insert[\s+]+into|drop[\s+]+table|concat\s*\(|information_schema|benchmark\s*\(|sleep\s*\() [NC,OR]
+
+  # XSS / script injection
+  RewriteCond %{QUERY_STRING} (<|%3C)\s*script|javascript:|vbscript:|onerror\s*=|onload\s*= [NC,OR]
+
+  # PHP superglobal / eval probing
+  RewriteCond %{QUERY_STRING} (globals|_request|_server|_env|_post|_get)\s*(=|\[) [NC,OR]
+  RewriteCond %{QUERY_STRING} (base64_(en|de)code|eval\s*\(|system\s*\(|exec\s*\(|passthru|shell_exec|phpinfo) [NC,OR]
+
+  # Suspicious encoded chars in the path
+  RewriteCond %{THE_REQUEST} (\\r|\\n|%0A|%0D|%00) [NC]
+
+  RewriteRule ^ - [F,L]
+
+  # Block requests with no/invalid Host header
+  RewriteCond %{HTTP_HOST} ^$
+  RewriteRule ^ - [F,L]
+</IfModule>
+
+
+# ==========================================================================
+#  10. BLOCK BAD BOTS, SCRAPERS & VULNERABILITY SCANNERS
+#      These burn bandwidth and probe for holes. Legit crawlers
+#      (Google, Bing, DuckDuckGo, Slack, WhatsApp...) are NOT listed.
+# ==========================================================================
+<IfModule mod_setenvif.c>
+  # --- Hacking / scanning tools ---
+  SetEnvIfNoCase User-Agent "(nikto|sqlmap|havij|acunetix|nessus|openvas|w3af|metasploit|nmap|masscan|zgrab|zmeu|dirbuster|gobuster|wpscan|joomscan|arachni|whatweb|fimap|paros|webinspect|brutus|hydra)" bad_bot
+
+  # --- Aggressive scrapers / site rippers (bandwidth killers) ---
+  SetEnvIfNoCase User-Agent "(httrack|webcopier|webzip|wget|curl|libwww-perl|python-requests|python-urllib|go-http-client|java/|scrapy|node-fetch|axios|okhttp|winhttp|lwp-|teleport|offline\sexplorer|webstripper|websucker|sitesnagger|superbot|extractor|grabber|harvest|collector|copier|reaper|stripper|sucker|siphon|leech|emailsiphon|emailwolf|majestic12|turnitinbot)" bad_bot
+
+  # --- SEO/marketing crawlers that hammer sites for no benefit to you ---
+  SetEnvIfNoCase User-Agent "(ahrefsbot|semrushbot|mj12bot|dotbot|megaindex|blexbot|seokicks|sistrix|serpstatbot|dataforseoBot|petalbot|barkrowler|zoominfobot|linkdexbot|spbot|exabot|magpie-crawler|netEstate|Screaming\sFrog)" bad_bot
+
+  # --- Empty or junk user agents ---
+  SetEnvIfNoCase User-Agent "^-?$" bad_bot
+  SetEnvIfNoCase User-Agent "^(mozilla)$" bad_bot
+
+  <IfModule mod_authz_core.c>
+    <RequireAll>
+      Require all granted
+      Require not env bad_bot
+    </RequireAll>
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Allow from all
+    Deny from env=bad_bot
+  </IfModule>
+</IfModule>
+
+
+# ==========================================================================
+#  11. HOTLINK / BANDWIDTH-THEFT PROTECTION
+#      Stops other sites embedding your images, fonts and media so YOU
+#      pay for THEIR traffic.
+#
+#      >>> REPLACE example.com WITH YOUR DOMAIN <<<
+# ==========================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Allow: direct hits / bookmarks (empty referer)
+  RewriteCond %{HTTP_REFERER} !^$
+
+  # Allow: your own domain (with or without www, http or https)
+  RewriteCond %{HTTP_REFERER} !^https?://(www\.)?example\.com [NC]
+
+  # Allow: localhost for development
+  RewriteCond %{HTTP_REFERER} !^https?://(localhost|127\.0\.0\.1) [NC]
+
+  # Allow: search engines & social previews (so your link previews still work)
+  RewriteCond %{HTTP_REFERER} !^https?://([a-z0-9-]+\.)?(google|bing|yahoo|duckduckgo|yandex|baidu)\. [NC]
+  RewriteCond %{HTTP_REFERER} !^https?://([a-z0-9-]+\.)?(facebook|fb|instagram|twitter|x|t|linkedin|pinterest|reddit|whatsapp|telegram|slack|discord|medium)\. [NC]
+
+  # Protected file types
+  RewriteRule \.(jpe?g|png|gif|webp|avif|bmp|svg|ico|mp4|webm|ogv|mp3|wav|ogg|pdf|zip|rar|7z|woff2?|ttf|otf|eot)$ - [F,NC,L]
+
+  # ALTERNATIVE: instead of a 403, serve a shaming image. Comment the rule
+  # above and uncomment these two lines (host the image OUTSIDE this rule).
+  # RewriteCond %{REQUEST_URI} !hotlink-denied\.png$
+  # RewriteRule \.(jpe?g|png|gif|webp|svg)$ /hotlink-denied.png [R=302,NC,L]
+</IfModule>
+
+# Extra: allow fonts to load only from your own origin
+<IfModule mod_headers.c>
+  <FilesMatch "\.(woff2?|ttf|otf|eot)$">
+    Header set Access-Control-Allow-Origin "https://example.com"
+  </FilesMatch>
+</IfModule>
+
+
+# ==========================================================================
+#  12. GZIP / BROTLI COMPRESSION
+#      Biggest single bandwidth saver — this HTML file compresses ~75%.
+# ==========================================================================
+<IfModule mod_brotli.c>
+  AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css text/xml text/javascript application/javascript application/json application/xml image/svg+xml
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml text/javascript
+  AddOutputFilterByType DEFLATE application/javascript application/x-javascript application/json
+  AddOutputFilterByType DEFLATE application/xml application/xhtml+xml application/rss+xml
+  AddOutputFilterByType DEFLATE image/svg+xml application/vnd.ms-fontobject application/x-font-ttf font/opentype
+
+  # Don't double-compress already-compressed formats
+  SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|avif|ico|zip|rar|7z|gz|bz2|mp[34]|mp4|webm|pdf|woff2?)$ no-gzip dont-vary
+
+  <IfModule mod_headers.c>
+    Header append Vary Accept-Encoding
+  </IfModule>
+</IfModule>
+
+
+# ==========================================================================
+#  13. BROWSER CACHING
+#      Repeat visitors re-download nothing → less bandwidth, faster site.
+# ==========================================================================
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault                              "access plus 1 month"
+
+  # HTML: short cache so maintenance-page edits go live quickly
+  ExpiresByType text/html                     "access plus 0 seconds"
+
+  ExpiresByType text/css                      "access plus 1 year"
+  ExpiresByType application/javascript        "access plus 1 year"
+  ExpiresByType text/javascript               "access plus 1 year"
+
+  ExpiresByType image/jpeg                    "access plus 1 year"
+  ExpiresByType image/png                     "access plus 1 year"
+  ExpiresByType image/gif                     "access plus 1 year"
+  ExpiresByType image/webp                    "access plus 1 year"
+  ExpiresByType image/avif                    "access plus 1 year"
+  ExpiresByType image/svg+xml                 "access plus 1 year"
+  ExpiresByType image/x-icon                  "access plus 1 year"
+
+  ExpiresByType font/woff2                    "access plus 1 year"
+  ExpiresByType font/woff                     "access plus 1 year"
+  ExpiresByType font/ttf                      "access plus 1 year"
+
+  ExpiresByType application/pdf               "access plus 1 month"
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Never cache the maintenance page itself
+  <FilesMatch "\.(html|htm)$">
+    Header set Cache-Control "no-cache, must-revalidate, max-age=0"
+  </FilesMatch>
+
+  # Long-cache static assets
+  <FilesMatch "\.(css|js|jpe?g|png|gif|webp|avif|svg|ico|woff2?|ttf|otf)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header unset ETag
+</IfModule>
+FileETag None
+
+
+# ==========================================================================
+#  14. MIME TYPES + UTF-8
+# ==========================================================================
+AddDefaultCharset UTF-8
+
+<IfModule mod_mime.c>
+  AddType text/html                     .html .htm
+  AddType text/css                      .css
+  AddType application/javascript        .js
+  AddType image/svg+xml                 .svg .svgz
+  AddType image/webp                    .webp
+  AddType image/avif                    .avif
+  AddType font/woff                     .woff
+  AddType font/woff2                    .woff2
+  AddType image/x-icon                  .ico
+  AddType application/manifest+json     .webmanifest
+</IfModule>
+
+
+# ==========================================================================
+#  15. CLEAN URLs  (/about instead of /about.html)
+# ==========================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Redirect /page.html -> /page  (avoids duplicate-content SEO penalty)
+  # index.html is excluded so the homepage stays at "/"
+  RewriteCond %{THE_REQUEST} \s/+(.+?)\.html[\s?] [NC]
+  RewriteCond %1 !^index$ [NC]
+  RewriteRule ^ /%1 [R=301,L,NE]
+
+  # /index.html -> /  (single canonical homepage URL)
+  RewriteCond %{THE_REQUEST} \s/+index\.html[\s?] [NC]
+  RewriteRule ^ / [R=301,L,NE]
+
+  # Internally serve /page from page.html
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME}\.html -f
+  RewriteRule ^(.+?)/?$ $1.html [L]
+</IfModule>
+
+
+# ==========================================================================
+#  16. CUSTOM ERROR PAGES
+#      Point everything at the maintenance page so visitors never see
+#      an ugly Apache error screen.
+# ==========================================================================
+ErrorDocument 400 /index.html
+ErrorDocument 401 /index.html
+ErrorDocument 403 /index.html
+ErrorDocument 404 /index.html
+ErrorDocument 500 /index.html
+ErrorDocument 503 /index.html
+
+
+# ==========================================================================
+#  17. OPTIONAL: TRUE MAINTENANCE MODE  (recommended for THIS site)
+#      Sends HTTP 503 + Retry-After so Google knows the downtime is
+#      temporary and does NOT de-index your site.
+#
+#      To enable: uncomment the block below.
+#      To let yourself in, put your IP in the RewriteCond line.
+#      Find your IP at https://ifconfig.me
+# ==========================================================================
+# <IfModule mod_rewrite.c>
+#   RewriteEngine On
+#   RewriteCond %{REMOTE_ADDR} !^203\.0\.113\.45$
+#   RewriteCond %{REQUEST_URI} !^/index\.html$
+#   RewriteCond %{REQUEST_URI} !\.(css|js|jpe?g|png|gif|webp|svg|ico|woff2?)$
+#   RewriteRule ^ /index.html [R=503,L]
+# </IfModule>
+# <IfModule mod_headers.c>
+#   Header always set Retry-After "86400" env=REDIRECT_STATUS
+# </IfModule>
+# ErrorDocument 503 /index.html
+
+
+# ==========================================================================
+#  18. OPTIONAL: IP BLOCKLIST
+#      Add abusive IPs here after checking your access logs.
+# ==========================================================================
+# <IfModule mod_authz_core.c>
+#   <RequireAll>
+#     Require all granted
+#     Require not ip 203.0.113.99
+#     Require not ip 198.51.100.0/24
+#   </RequireAll>
+# </IfModule>
