@@ -55,8 +55,24 @@ ServerSignature Off
   # HSTS — only after HTTPS is confirmed working
   Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
 
-  # CSP tuned for this page: inline <style>/<script> + Google Fonts + <canvas>
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+  # ---- Content-Security-Policy: DISABLED ----
+  # CSP is the #1 cause of "my CSS/fonts stopped loading". A strict policy
+  # silently blocks any stylesheet, font, script or image from a domain not
+  # explicitly whitelisted (CDNs, Google Fonts, analytics, plugins...).
+  #
+  # The site works fine without it — the headers above still cover
+  # clickjacking, MIME sniffing and referrer leakage.
+  #
+  # If you later want CSP, uncomment ONE of these and test in a private
+  # window with DevTools open (Console tab shows exactly what it blocks).
+
+  # PERMISSIVE — allows any HTTPS source. Safe starting point, still
+  # blocks plain-HTTP and inline object/embed attacks.
+  # Header always set Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline'; object-src 'none'; base-uri 'self'"
+
+  # STRICT — only this page's inline CSS/JS + Google Fonts. Use only if
+  # you are NOT loading anything from a CDN.
+  # Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; object-src 'none'; base-uri 'self'"
 </IfModule>
 
 
@@ -149,8 +165,23 @@ ServerSignature Off
   # Allow social platforms so link previews keep working
   RewriteCond %{HTTP_REFERER} !^https?://([a-z0-9-]+\.)?(facebook|fb|instagram|twitter|x|t|linkedin|pinterest|reddit|whatsapp|telegram|slack|medium)\. [NC]
 
-  RewriteRule \.(jpe?g|png|gif|webp|avif|bmp|svg|ico|mp4|webm|mp3|pdf|zip|rar|woff2?|ttf|otf)$ - [F,NC,L]
+  # Protected types. NOTE: fonts (woff/woff2/ttf/otf) and .svg are
+  # deliberately NOT listed — browsers often send a missing or rewritten
+  # Referer for @font-face and CSS background requests (especially behind
+  # Cloudflare), which makes hotlink rules block your OWN fonts/icons.
+  RewriteRule \.(jpe?g|png|gif|webp|avif|bmp|ico|mp4|webm|mp3|pdf|zip|rar)$ - [F,NC,L]
 </IfModule>
+
+# Safety net: CSS and JS must ALWAYS be served, never hotlink-blocked.
+<FilesMatch "\.(css|js)$">
+  <IfModule mod_authz_core.c>
+    Require all granted
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Allow from all
+  </IfModule>
+</FilesMatch>
 
 
 # ==========================================================================
